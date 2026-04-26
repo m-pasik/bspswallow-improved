@@ -1,10 +1,13 @@
-# bspswallow
+# bspswallow (improved)
 Adds functionality provided by the dwm "swallow" patch to bspwm.
+
+Modified to allow hiding and showing windows on demand.
 
 # Dependencies
 
 * bspwm (obviously)
 * xprop
+* dmenu
 
 # Installation
 Add two files to ~/.config/bspwm
@@ -24,6 +27,16 @@ pgrep bspswallow || bspswallow &
 ```
 
 Now just restart bspwm and you're good to go.
+
+You can hide/show the current window by running `bspswallow hide/show`, you can also provide the node ID as the second argument.
+
+If you want to display the list of hidden windows in dmenu run `bspswallow select`.
+
+If you want to use a dmenu replacement, such as rofi set the environment variable `$DMENU` before running `bspswallow select`, for example:
+
+```
+export DMENU="rofi -dmenu"
+```
 
 # Known Issues
 

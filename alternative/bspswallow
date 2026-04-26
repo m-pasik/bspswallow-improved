@@ -1,5 +1,10 @@
 #!/bin/sh
 
+[ -z "$DMENU" ] && DMENU="dmenu"
+
+swallowed="/tmp/swallowed_$USER"
+hidden="/tmp/hidden_$USER"
+
 # Get class of a wid
 get_class() {
 	id=$1
@@ -8,6 +13,35 @@ get_class() {
   else
 	  xprop -id "$id" | sed -n '/WM_CLASS\|WM_COMMAND/s/.*"\(.*\)".*/\1/p'
   fi
+}
+
+get_name() {
+    xprop WM_NAME -id "$1" | sed 's/^[^"]*"\(.*\)"$/\1/'
+}
+
+hide() {
+    [ -z "$1" ] && id=$(bspc query -N -n focused) || id=$1
+    bspc node "$id" --flag hidden=on
+    echo "$id" >>$hidden
+    [ $# -ge 2 ] && echo "$2 $1" >>$swallowed
+}
+
+show() {
+    [ -z "$1" ] && return
+    bspc node "$1" --flag hidden=off
+    d=$(bspc query -D -n "$1")
+    [ $# -ge 2 ] && [ "$d" = "$2" ] || bspc node "$1" -d "$2"
+    bspc node "$1" -f
+    sed -i "/$1/d" $hidden
+    sed -i "/$1/d" $swallowed
+}
+
+sel() {
+    ids=$(tac $hidden)
+    wins=$(for id in $ids; do [ ! -z "$id" ] && echo "$id: \"$(get_name $id)\" ($(</proc/$(get_pid $id)/comm))"; done)
+    search=$($DMENU -p show <<< "$wins")
+    [ -z "$search" ] && return
+    show ${search%%:*}
 }
 
 swallow() {
@@ -20,34 +54,34 @@ swallow() {
 	if [ "$addedtodesktop" = "$lasttermdesktop" ]; then
 		grep "^$(get_class "$swallowerid")$" ~/.config/bspwm/swallow || return
 		grep "^$(get_class "$swallowingid")$" ~/.config/bspwm/terminals || return
-		echo "$swallowerid $swallowingid" >> /tmp/swallowids
-		bspc node "$swallowingid" --flag hidden=on
+
+        hide "$swallowingid" "$swallowerid"
 	fi
 }
 
 spit() {
 	spitterid=$1
 	spitterdesktop=$2
-	grep "^$spitterid" /tmp/swallowids || return
-	spittingid=$(grep "^$spitterid" /tmp/swallowids | head -n1 | awk '{print $2}')
+	grep "^$spitterid" $swallowed || return
+	spittingid=$(grep "^$spitterid" $swallowed | head -n1 | awk '{print $2}')
 
-	bspc node "$spittingid" --flag hidden=off
-
-	termdesktop=$(bspc query -D -n "$spittingid")
-	[ "$termdesktop" = "$spitterdesktop" ] || bspc node "$spittingid" -d "$spitterdesktop"
-
-	bspc node "$spittingid" -f
-	sed -i "/^$spitterid/d" /tmp/swallowids
+    show $spittingid $spitterdesktop
 }
 
-bspc subscribe node_add node_remove | while read -r event
-do
-	case $(echo "$event" | awk '{ print $1 }') in
-		node_add)
-            		swallow $(echo "$event" | awk '{print $5 " " $3}')
-			;;
-		node_remove)
-			spit $(echo "$event" | awk '{print $4 " " $3}')
-			;;
-	esac
-done
+run() {
+    bspc subscribe node_add node_remove | while read -r event; do
+        case $(echo "$event" | awk '{ print $1 }') in
+        node_add)
+            swallow $(echo "$event" | awk '{print $5 " " $3}')
+            ;;
+        node_remove)
+            spit $(echo "$event" | awk '{print $4 " " $3}')
+            ;;
+        esac
+    done
+}
+
+[ $# -eq 0 ] || [ "$1" = "run" ] && run
+[ "$1" = "hide" ] && hide $2
+[ "$1" = "show" ] && show $2
+[ "$1" = "select" ] && sel
